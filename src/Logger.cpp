@@ -9,7 +9,9 @@
 #include <sstream>
 #include <algorithm>
 
+#ifdef BOOST_STACKTRACE_USE_BACKTRACE
 #include <boost/stacktrace.hpp>
+#endif
 #include <boost/algorithm/string/replace.hpp>
 
 #include "../include/Logger/Logger.h"
