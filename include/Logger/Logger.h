@@ -22,6 +22,8 @@
 
 //TODO: provide some sort of stream
 
+__attribute__((constructor)) void initLogger();
+
 namespace Logger {
     enum Levels {
         ERROR = 5,
@@ -31,6 +33,8 @@ namespace Logger {
         INFO = 1,
         ALL = 0
     };
+
+    void
 
     void Info(std::basic_string<char> text, std::string name = "");
     void Log(std::basic_string<char> text, std::string name = "");

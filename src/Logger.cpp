@@ -4,7 +4,7 @@
 
 #include <ctime>
 #include <iostream>
-#include <string>
+#include <csignal>
 #include <utility>
 #include <sstream>
 #include <algorithm>
@@ -18,7 +18,51 @@
 
 using namespace Logger::Utils::Helper;
 
+void exitHandler(int sig) {
+    // get exit code name from signal number
+    std::string exitCode = "(UNKNOWN)";
+
+    switch (sig) {
+        case SIGABRT:
+            exitCode = "SIGABRT";
+            break;
+        case SIGFPE:
+            exitCode = "SIGFPE";
+            break;
+        case SIGILL:
+            exitCode = "SIGILL";
+            break;
+        case SIGINT:
+            exitCode = "SIGINT";
+            break;
+        case SIGSEGV:
+            exitCode = "SIGSEGV";
+            break;
+        case SIGTERM:
+            exitCode = "SIGTERM";
+            return;
+            break;
+    }
+
+    Logger::Error("Exiting with signal " + std::to_string(sig));
+    exit(sig);
+}
+
+void InitLogger() {
+    #ifndef NO_LOGGER_SYSTEM_MESSAGES
+    Logger::Info("Logger initialized", "Logger");
+    #endif
+
+    // register signal handlers
+
+    for (int x : [SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM]) {
+        signal(x, exitHandler);
+    }
+}
+
 namespace Logger {
+
+
     std::string fill(std::string str, int len = 2, char fill = 48) {
         if (str.length() < len)
             str.insert(str.front() == '-' ? 1 : 0, len - str.length(), fill);
