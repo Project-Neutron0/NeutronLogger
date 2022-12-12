@@ -47,14 +47,14 @@ void exitHandler(int sig) {
     exit(sig);
 }
 
-void InitLogger() {
+void initLogger() {
     #ifndef NO_LOGGER_SYSTEM_MESSAGES
     Logger::Info("Logger initialized", "Logger");
     #endif
 
     // register signal handlers
 
-    for (int x : [SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM]) {
+    for (int x : {SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM}) {
         signal(x, exitHandler);
     }
 }
