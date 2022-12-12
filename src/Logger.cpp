@@ -15,7 +15,6 @@
 #include "../include/Logger/Logger.h"
 #include "../include/Logger/ansi.h"
 #include "../include/Logger/Helper.h"
-#include "../include/Logger/Files.h"
 
 using namespace Logger::Utils::Helper;
 
@@ -62,7 +61,7 @@ namespace Logger {
                 int max_line = line + 1;
 
                 std::vector<int> t_lines = {};
-                std::vector<std::string> important_lines = Utils::Files::readLines_gi(filename, t_lines, min_line, max_line);
+                std::vector<std::string> important_lines = readLines_gi(filename, t_lines, min_line, max_line);
 
                 std::ostringstream oss;
 

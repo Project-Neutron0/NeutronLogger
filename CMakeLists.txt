@@ -16,4 +16,4 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_definitions(COMPILE_RELEASE)
 endif()
 
-add_library(NeutronLogger STATIC src/Helper.cpp src/Files.cpp src/Logger.cpp)
+add_library(NeutronLogger STATIC src/Helper.cpp src/Logger.cpp)
