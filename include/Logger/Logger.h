@@ -34,8 +34,6 @@ namespace Logger {
         ALL = 0
     };
 
-    void
-
     void Info(std::basic_string<char> text, std::string name = "");
     void Log(std::basic_string<char> text, std::string name = "");
     void Warn(std::basic_string<char> text, std::string name = "");
