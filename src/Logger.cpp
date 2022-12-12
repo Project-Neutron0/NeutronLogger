@@ -40,7 +40,6 @@ void exitHandler(int sig) {
             break;
         case SIGTERM:
             exitCode = "SIGTERM";
-            return;
             break;
     }
 
