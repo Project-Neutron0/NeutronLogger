@@ -77,9 +77,6 @@ namespace Logger {
     }
 
     std::string prettyStacktrace(std::string t, int highlight_frame, std::string highlight_color, int keep_going) {
-
-        Logger::Log("Generating stacktrace for frame " + std::to_string(highlight_frame), Logger::Config::system_name);
-
         std::vector<std::string> t_list = split(t);
 
         int current_trace = highlight_frame;
@@ -156,13 +153,6 @@ namespace Logger {
 
         return t;
     }
-
-
-
-
-
-
-
 
     std::string fancyTime() {
         time_t currentTime;
