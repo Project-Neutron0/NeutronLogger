@@ -124,7 +124,7 @@ namespace Logger {
                         oss << "\n    ";
                     }
 
-                    oss << fill(std::to_string(t_lines[i]), 2, ' ') << FORE_GRAY << " | " << RESET << x;
+                    oss << fill(std::to_string(t_lines[i]), 2, ' ') << FORE_GRAY << " | " << RESET << BOLD << x << RESET;
                     i++;
                 }
                 std::string s = oss.str();
