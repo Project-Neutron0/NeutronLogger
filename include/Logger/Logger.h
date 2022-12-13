@@ -22,7 +22,11 @@
 
 //TODO: provide some sort of stream
 
+#ifndef LOGGER_NO_INIT
 __attribute__((constructor)) void initLogger();
+#else
+void initLogger();
+#endif
 
 namespace Logger {
     enum Levels {

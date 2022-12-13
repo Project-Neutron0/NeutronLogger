@@ -21,6 +21,7 @@ using namespace Logger::Utils::Helper;
 void exitHandler(int sig) {
     // get exit code name from signal number
     std::string exitCode = "(UNKNOWN)";
+    int mod = 0;
 
     switch (sig) {
         case SIGABRT:
@@ -37,18 +38,19 @@ void exitHandler(int sig) {
             break;
         case SIGSEGV:
             exitCode = "SIGSEGV";
+            mod = -2;
             break;
         case SIGTERM:
             exitCode = "SIGTERM";
             break;
     }
 
-    Logger::Error("Exiting with signal " + std::to_string(sig));
+    Logger::Error("Exiting with signal " + std::to_string(sig), "Logger", mod);
     exit(sig);
 }
 
 void initLogger() {
-    #ifndef NO_LOGGER_SYSTEM_MESSAGES
+    #ifndef LOGGER_NO_SYSTEM_MESSAGES
     Logger::Info("Logger initialized", "Logger");
     #endif
 
