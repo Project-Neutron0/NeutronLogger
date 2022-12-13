@@ -52,7 +52,7 @@ void exitHandler(int sig) {
 }
 
 void initLogger() {
-    #ifndef LOGGER_NO_SYSTEM_MESSAGES
+    #ifdef LOGGER_VERBOSE
     Logger::Info("Logger initialized", Logger::Config::system_name);
     #endif
 
@@ -124,7 +124,7 @@ namespace Logger {
                         oss << "\n    ";
                     }
 
-                    oss << fill(std::to_string(t_lines[i]), 2, ' ') << RESET << FORE_GRAY << " | " << RESET << BOLD << x << RESET;
+                    oss << fill(std::to_string(t_lines[i]), 2, ' ') << RESET << FORE_GRAY << " | " << RESET << x << RESET;
                     i++;
                 }
                 std::string s = oss.str();
