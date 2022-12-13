@@ -46,7 +46,12 @@ void exitHandler(int sig) {
             break;
     }
 
-    Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name, mod);
+    try {
+        Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name, mod);
+    } catch (...) {
+        Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name);
+    }
+
     exit(sig);
 }
 
