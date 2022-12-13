@@ -38,7 +38,6 @@ void exitHandler(int sig) {
             break;
         case SIGSEGV:
             exitCode = "SIGSEGV";
-            mod = -2;
             break;
         case SIGTERM:
             exitCode = "SIGTERM";
