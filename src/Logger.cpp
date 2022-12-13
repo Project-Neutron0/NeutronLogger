@@ -7,70 +7,68 @@
 #include <csignal>
 #include <utility>
 #include <sstream>
-#include <algorithm>
 
 #include <boost/stacktrace.hpp>
 #include <boost/algorithm/string/replace.hpp>
 
 #include "../include/Logger/Logger.h"
-#include "../include/Logger/ansi.h"
 #include "../include/Logger/Helper.h"
 
 using namespace Logger::Utils::Helper;
-
-void exitHandler(int sig) {
-    // get exit code name from signal number
-    std::string exitCode = "(UNKNOWN)";
-    int mod = 0;
-
-    switch (sig) {
-        case SIGABRT:
-            exitCode = "SIGABRT";
-            break;
-        case SIGFPE:
-            exitCode = "SIGFPE";
-            break;
-        case SIGILL:
-            exitCode = "SIGILL";
-            break;
-        case SIGINT:
-            exitCode = "SIGINT";
-            break;
-        case SIGSEGV:
-            exitCode = "SIGSEGV";
-            break;
-        case SIGTERM:
-            exitCode = "SIGTERM";
-            Logger::Log("Term signal received, exiting", Logger::Config::system_name);
-            return;
-            break;
-    }
-
-    try {
-        Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name, mod);
-    } catch (...) {
-        Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name);
-    }
-
-    exit(sig);
-}
-
-void initLogger() {
-    #ifdef LOGGER_VERBOSE
-    Logger::Info("Logger initialized", Logger::Config::system_name);
-    #endif
-
-    // register signal handlers
-
-    for (int x : {SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM}) {
-        signal(x, exitHandler);
-    }
-}
-
 namespace Logger {
 
+    void initLogger() {
+#ifdef LOGGER_VERBOSE
+        Logger::Info("Logger initialized", Logger::Config::system_name);
+#endif
+
+        // register signal handlers
+
+        for (int x : {SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM}) {
+            signal(x, exitHandler);
+        }
+    }
 
 
+    void exitHandler(int sig) {
+        // get exit code name from signal number
+        int mod = 1;
+
+        std::string exitCode;
+
+        switch (sig) {
+            case SIGABRT:
+                exitCode = "SIGABRT";
+                break;
+            case SIGFPE:
+                exitCode = "SIGFPE";
+                break;
+            case SIGILL:
+                exitCode = "SIGILL";
+                break;
+            case SIGINT:
+                exitCode = "SIGINT";
+                break;
+            case SIGSEGV:
+                exitCode = "SIGSEGV";
+                break;
+            case SIGTERM:
+                exitCode = "SIGTERM";
+                Logger::Log("Term signal received, exiting", Logger::Config::system_name);
+                return;
+
+            default:
+                exitCode = "UNKNOWN";
+                break;
+        }
+
+
+
+        Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name,
+                      mod, 1);
+
+        exit(sig);
+    }
 
     std::string fill(std::string str, int len = 2, char fill = 48) {
         if (str.length() < len)
@@ -78,12 +76,74 @@ namespace Logger {
         return str;
     }
 
-    std::string prettyStacktrace(std::string t, int highlight_frame = -1, std::string highlight_color = FORE_BRIGHT_MAGENTA) {
+    std::string prettyStacktrace(std::string t, int highlight_frame, std::string highlight_color, int keep_going) {
+
+        Logger::Log("Generating stacktrace for frame " + std::to_string(highlight_frame), Logger::Config::system_name);
+
+        std::vector<std::string> t_list = split(t);
+
+        int current_trace = highlight_frame;
+
+#ifdef BOOST_STACKTRACE_USE_BACKTRACE
+        // -- Insert a snippet of the most important frame's respective file right below it (only if we have access to boost stacktrace) -- //
+
+        bool done = false;
+
+        int max_iterations = 5;
+
+        while (!done) {
+            max_iterations--;
+            if (max_iterations == 0) {
+                current_trace = highlight_frame;
+                done = true;
+            }
+            std::string stack =  t_list[current_trace];
+
+            // if " at " is not in this stack frame, add keep_going to current_trace and try again
+            if (stack.find(" at ") == std::string::npos && max_iterations != 0 && keep_going != 0) {
+                current_trace += keep_going; // keep_going is usually 1 or -1 meaning go up or down the stacktrace in search of a frame with " at "
+                continue;
+            }
+
+            std::vector<std::string> file_and_line = split(split(stack, " at ")[1],":");
+            std::string filename = file_and_line[0];
+            int line = parseInt(file_and_line[1]);
+
+            int min_line = line - 1;
+            int max_line = line + 1;
+
+            std::vector<int> t_lines = {};
+            std::vector<std::string> important_lines = readLines_gi(filename, t_lines, min_line, max_line);
+
+            std::ostringstream oss;
+
+            int i = 0;
+            for (std::string x : important_lines) {
+                if (t_lines[i] == line) {
+                    oss << highlight_color;
+                    oss << "\n  * ";
+                    oss << RESET;
+                } else {
+                    oss << "\n    ";
+                }
+
+                oss << fill(std::to_string(t_lines[i]), 2, ' ') << RESET << FORE_GRAY << " | " << RESET << x << RESET;
+                i++;
+            }
+            std::string s = oss.str();
+            t_list[current_trace] = stack + oss.str();
+
+            done = true;
+        }
+#endif
+
+        t = join(t_list, "\n");
 
         // -- Highlight the most important frame and dim the others -- //
-        for (int x : range(split(t,"\n").size())) {
+        for (int x : range(t_list.size())) {
+
             std::string c_color;
-            if (x == highlight_frame) {
+            if (x == current_trace) {
                 c_color = highlight_color + BOLD;
             } else {
                 c_color = FORE_GRAY;
@@ -94,56 +154,15 @@ namespace Logger {
             boost::replace_all(t, n + "# ", c_color + n + "# " + RESET);
         }
 
-        #ifndef BOOST_STACKTRACE_USE_BACKTRACE
         return t;
-        #endif
-
-        #ifdef BOOST_STACKTRACE_USE_BACKTRACE
-        std::vector<std::string> t_list = split(t);
-
-        // -- Insert a snippet of the most important frame's respective file right below it -- //
-        int current_trace = 0;
-
-        for (const std::string& stack : t_list) {
-            if (current_trace == highlight_frame) {
-                std::vector<std::string> file_and_line = split(split(stack, " at ")[1],":");
-                std::string filename = file_and_line[0];
-                int line = parseInt(file_and_line[1]);
-
-                int min_line = line - 1;
-                int max_line = line + 1;
-
-                std::vector<int> t_lines = {};
-                std::vector<std::string> important_lines = readLines_gi(filename, t_lines, min_line, max_line);
-
-                std::ostringstream oss;
-
-                int i = 0;
-                for (std::string x : important_lines) {
-                    if (t_lines[i] == line) {
-                        oss << highlight_color;
-                        oss << "\n  * ";
-                        oss << RESET;
-                    } else {
-                        oss << "\n    ";
-                    }
-
-                    oss << fill(std::to_string(t_lines[i]), 2, ' ') << RESET << FORE_GRAY << " | " << RESET << x << RESET;
-                    i++;
-                }
-                std::string s = oss.str();
-                t_list[current_trace] = stack + oss.str();
-
-                break;  //end the loop because the if statement should only be true once
-            }
-            current_trace++;
-        }
-
-
-        return join(t_list,"\n");
-
-        #endif
     }
+
+
+
+
+
+
+
 
     std::string fancyTime() {
         time_t currentTime;
@@ -166,16 +185,16 @@ namespace Logger {
             name = "[" + name + "] ";
         }
 
-        std::string end = std::string("");
+        std::stringstream end;
 
-        end.append(FORE_GRAY);
-        end.append(BOLD);
-        end.append(fancyTime() + " ");
-        end.append(name);
-        end.append(RESET);
-        end.append(text);
+        end << FORE_GRAY;
+        end << BOLD;
+        end << fancyTime() << " ";
+        end << name;
+        end << RESET;
+        end << text;
 
-        *Config::output << end << std::endl;
+        *Config::output << end.str() << std::endl;
     }
 
     void Log(std::string text, std::string name) {
@@ -185,16 +204,16 @@ namespace Logger {
             name = "[" + name + "] ";
         }
 
-        std::string end = std::string("");
+        std::stringstream end;
 
-        end.append(FORE_GRAY);
-        end.append(BOLD);
-        end.append(fancyTime() + " ");
-        end.append(name);
-        end.append(RESET);
-        end.append(text);
+        end << FORE_GRAY;
+        end << BOLD;
+        end << fancyTime() << " ";
+        end << name;
+        end << RESET;
+        end << text;
 
-        *Config::output << end << std::endl;
+        *Config::output << end.str() << std::endl;
     }
 
     void Warn(std::string text, std::string name) {
@@ -204,40 +223,81 @@ namespace Logger {
             name = "[" + name + "] ";
         }
 
-        std::string end = std::string("");
+        std::stringstream end;
 
-        end.append(FORE_YELLOW);
-        end.append(BOLD);
-        end.append(fancyTime() + " ");
-        end.append(name + "WARNING: ");
-        end.append(RESET);
-        end.append(text);
+        end << FORE_YELLOW;
+        end << BOLD;
+        end << fancyTime() << " ";
+        end << name << "WARNING: ";
+        end << RESET;
+        end << text;
 
-        *Config::output << end << std::endl;
+        *Config::output << end.str() << std::endl;
     }
 
-    void Crit(std::string text, std::string name, int stack_mod) {
+    void Crit(std::string text, std::string name, int stack_mod, int keep_going) {
         if (Config::level >= Levels::CRIT) {return;}
 
         if (name != "") {
             name = "[" + name + "] ";
         }
 
-        std::string end = std::string("");
+        std::stringstream end;
 
-        end.append(FORE_BRIGHT_MAGENTA);
-        end.append(BOLD);
-        end.append(fancyTime() + " ");
-        end.append(name + "CRITICAL: ");
-        end.append(RESET);
-        end.append(text);
-        end.append("\n");
-        end.append(prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_BRIGHT_MAGENTA));
+        end << FORE_BRIGHT_MAGENTA;
+        end << BOLD;
+        end << fancyTime() << " ";
+        end << name << "CRITICAL: ";
+        end << RESET;
+        end << text;
+        end << "\n";
+        end << prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_BRIGHT_MAGENTA, keep_going);
 
-        *Config::output << end << std::endl;
+        *Config::output << end.str() << std::endl;
     }
 
-    void Error(std::string text, std::string name, int stack_mod) {
+    void Crit(std::basic_string<char> text, std::string name, std::string stack_trace) {
+        if (Config::level >= Levels::CRIT) {return;}
+
+        if (name != "") {
+            name = "[" + name + "] ";
+        }
+
+        std::stringstream end;
+
+        end << FORE_BRIGHT_MAGENTA;
+        end << BOLD;
+        end << fancyTime() << " ";
+        end << name << "CRITICAL: ";
+        end << RESET;
+        end << text;
+        end << "\n";
+        end << stack_trace;
+
+        *Config::output << end.str() << std::endl;
+    }
+    void Error(std::basic_string<char> text, std::string name, std::string stack_trace) {
+        if (Config::level >= Levels::ERROR) {return;}
+
+        if (name != "") {
+            name = "[" + name + "] ";
+        }
+
+        std::stringstream end;
+
+        end << FORE_BRIGHT_RED;
+        end << BOLD;
+        end << fancyTime() << " ";
+        end << name << "ERROR: ";
+        end << RESET;
+        end << text;
+        end << "\n";
+        end << stack_trace;
+
+        *Config::output << end.str() << std::endl;
+    }
+
+    void Error(std::string text, std::string name, int stack_mod, int keep_going) {
         if (Config::level >= Levels::ERROR) { return; }
 
         if (name != "") {
@@ -253,7 +313,7 @@ namespace Logger {
         end.append(RESET);
         end.append(text);
         end.append("\n");
-        end.append(prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_RED));
+        end.append(prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_RED, keep_going));
 
         *Config::output << end << std::endl;
         exit(1);
