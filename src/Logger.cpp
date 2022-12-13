@@ -42,16 +42,18 @@ void exitHandler(int sig) {
             break;
         case SIGTERM:
             exitCode = "SIGTERM";
+            Logger::Log("Term signal received, exiting", Logger::Config::system_name);
+            return;
             break;
     }
 
-    Logger::Error("Exiting with signal " + std::to_string(sig), "Logger", mod);
+    Logger::Error("Exiting with signal " + std::to_string(sig), Logger::Config::system_name, mod);
     exit(sig);
 }
 
 void initLogger() {
     #ifndef LOGGER_NO_SYSTEM_MESSAGES
-    Logger::Info("Logger initialized", "Logger");
+    Logger::Info("Logger initialized", Logger::Config::system_name);
     #endif
 
     // register signal handlers
@@ -62,6 +64,8 @@ void initLogger() {
 }
 
 namespace Logger {
+
+
 
 
     std::string fill(std::string str, int len = 2, char fill = 48) {

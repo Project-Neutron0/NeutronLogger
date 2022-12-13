@@ -50,6 +50,7 @@ namespace Logger {
     struct Config {
         inline static std::ostream* output = &std::cout;
         inline static int level = Levels::ALL;
+        inline static std::string system_name = "Logger";
     };
 }
 
