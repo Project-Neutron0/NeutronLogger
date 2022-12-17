@@ -53,7 +53,6 @@ namespace Logger {
                 exitCode = "SIGSEGV";
                 break;
             case SIGTERM:
-                exitCode = "SIGTERM";
                 Logger::Log("Term signal received, exiting", Logger::Config::system_name);
                 return;
 
@@ -62,10 +61,11 @@ namespace Logger {
                 break;
         }
 
-
-
-        Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name,
-                      mod, 1);
+        try {
+            Logger::Error("Exiting with signal " + std::to_string(sig) + " (" + exitCode + ")", Logger::Config::system_name, mod, 1);
+        } catch (std::exception &e) {
+            std::cerr << "Error while logging exit signal " << sig << " (" << exitCode << "): " << e.what() << std::endl;
+        }
 
         exit(sig);
     }
@@ -77,11 +77,12 @@ namespace Logger {
     }
 
     std::string prettyStacktrace(std::string t, int highlight_frame, std::string highlight_color, int keep_going) {
+        Logger::Log("prettyStacktrace");
         std::vector<std::string> t_list = split(t);
 
         int current_trace = highlight_frame;
 
-#ifdef BOOST_STACKTRACE_USE_BACKTRACE
+        #ifdef BOOST_STACKTRACE_USE_BACKTRACE
         // -- Insert a snippet of the most important frame's respective file right below it (only if we have access to boost stacktrace) -- //
 
         bool done = false;
@@ -95,6 +96,8 @@ namespace Logger {
                 done = true;
             }
             std::string stack =  t_list[current_trace];
+
+            //Logger::Log(stack);
 
             // if " at " is not in this stack frame, add keep_going to current_trace and try again
             if (stack.find(" at ") == std::string::npos && max_iterations != 0 && keep_going != 0) {
@@ -132,7 +135,7 @@ namespace Logger {
 
             done = true;
         }
-#endif
+        #endif
 
         t = join(t_list, "\n");
 
@@ -294,18 +297,19 @@ namespace Logger {
             name = "[" + name + "] ";
         }
 
-        std::string end = std::string("");
+        std::stringstream end;
 
-        end.append(FORE_RED);
-        end.append(BOLD);
-        end.append(fancyTime() + " ");
-        end.append(name + "ERROR: ");
-        end.append(RESET);
-        end.append(text);
-        end.append("\n");
-        end.append(prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_RED, keep_going));
+        end << FORE_RED;
+        end << BOLD;
+        end << fancyTime() << " ";
+        end << name << "Error: ";
+        end << RESET;
+        end << text;
+        end << "\n";
+        end << prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_RED, keep_going);
 
-        *Config::output << end << std::endl;
+        *Config::output << end.str() << std::endl;
+
         exit(1);
     }
 
