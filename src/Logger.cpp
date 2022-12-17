@@ -77,7 +77,6 @@ namespace Logger {
     }
 
     std::string prettyStacktrace(std::string t, int highlight_frame, std::string highlight_color, int keep_going) {
-        Logger::Log("prettyStacktrace");
         std::vector<std::string> t_list = split(t);
 
         int current_trace = highlight_frame;
