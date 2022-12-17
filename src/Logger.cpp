@@ -288,6 +288,8 @@ namespace Logger {
         end << stack_trace;
 
         *Config::output << end.str() << std::endl;
+
+        exit(0);
     }
 
     void Error(std::string text, std::string name, int stack_mod, int keep_going) {
