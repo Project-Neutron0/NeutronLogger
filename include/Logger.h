@@ -115,7 +115,7 @@ namespace Logger {
     inline std::string replace_all(T_t text, T_s search, T_r replace);
 
     template <typename T, typename J>
-    EXPORT inline T join(std::vector<T> list, J join = " ");
+    EXPORT inline std::string join(std::vector<T> list, J join = " ");
 
     inline int parseInt(std::string str);
 
@@ -219,10 +219,8 @@ namespace Logger {
     std::string ContainerToString(const T& container) {
         std::string res;
         res += "{ ";
-        for (const auto& elem : container) {
-            res += AsString(elem) + " ";
-        }
-        res+= "}";
+        res += join(container, ", ");
+        res+= " }";
         return res;
     }
 
@@ -232,13 +230,17 @@ namespace Logger {
 
         try {
             if constexpr (std::is_convertible<T, std::string>::value) {
-                res = obj;
+                res = (std::string)obj;
+            } else if constexpr (std::is_convertible<T, char*>::value) {
+                res = std::string((char*)obj);
             } else if constexpr (std::is_same<T, bool>::value) {
                 res = obj ? "true" : "false";
             } else if constexpr (std::is_integral<T>::value || std::is_floating_point<T>::value) {
                 res = std::to_string(obj);
             } else if constexpr (std::is_same<T, const char*>::value) {
                 res = std::string(obj);
+            } else if constexpr (std::is_same<T, const unsigned char*>::value) {
+                res = std::string(reinterpret_cast<const char *>(obj));
             } else if constexpr (std::is_same<T, std::string_view>::value) {
                 res = std::string(obj);
             } else if constexpr (std::is_same<T, std::wstring>::value) {
@@ -264,13 +266,14 @@ namespace Logger {
                 }
             } else {
                 try {
-                    res = std::string(obj);
+                    res = (std::string)(obj);
                 } catch (...) {
                     try {
                         res = static_cast<std::string>(obj);
-                    } catch (...) {
+                    }
+                    catch(...) {
                         try {
-                            const char* cstr = static_cast<const char*>(obj);
+                            const char* cstr = (const char*)(obj);
                             if (cstr != nullptr) {
                                 res = std::string(cstr);
                             } else {
@@ -378,13 +381,13 @@ namespace Logger {
     }
 
     template <typename T, typename J>
-    EXPORT T join(std::vector<T> list, J join) {
-        T res;
+    EXPORT std::string join(std::vector<T> list, J join) {
+        std::string res;
 
         int len = list.size();
         int i = 1;
         for (T x : list) {
-            res += x + (i == len ? "" : (std::string)join);
+            res += AsString(x) + (i == len ? "" : AsString(join));
             i++;
         }
 
@@ -628,13 +631,15 @@ namespace Logger {
 
         auto time = fancyTime() + " ";
 
+        std::string prefix = "WARNING: ";
+
         end.append(FORE_YELLOW);
         end.append(BOLD);
         end.append(time);
-        end.append(name + "WARNING: ");
+        end.append(name + prefix);
         end.append(RESET);
 
-        int indent = (int)(time+name).length();
+        int indent = (int)(time+name+prefix).length();
         end.append(_indenter(AsString(text), indent));
 
         *Config::output << end << std::endl;
@@ -652,13 +657,15 @@ namespace Logger {
 
         auto time = fancyTime() + " ";
 
+        std::string prefix = "CRITICAL: ";
+
         end.append(FORE_BRIGHT_MAGENTA);
         end.append(BOLD);
         end.append(time);
-        end.append(name + "CRITICAL: ");
+        end.append(name + prefix);
         end.append(RESET);
 
-        int indent = (int)(time+name).length();
+        int indent = (int)(time+name+prefix).length();
         end.append(_indenter(AsString(text), indent));
 
         end.append("\n");
@@ -680,13 +687,15 @@ namespace Logger {
 
         auto time = fancyTime() + " ";
 
+        std::string prefix = "ERROR: ";
+
         end.append(FORE_RED);
         end.append(BOLD);
         end.append(time);
-        end.append(name + "ERROR: ");
+        end.append(name + prefix);
         end.append(RESET);
 
-        int indent = (int)(time+name).length();
+        int indent = (int)(time+name+prefix).length();
         end.append(_indenter(AsString(text), indent));
 
         end.append("\n");
