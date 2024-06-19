@@ -17,6 +17,11 @@
 #include <sstream>
 #include <csignal>
 #include <fstream>
+#include <mutex>
+#include <string>
+#include <atomic>
+#include <array>
+#include <thread>
 
 #pragma region ANSI codes
 #define FORE_BLACK "\e[30m"
@@ -73,12 +78,6 @@
 
 //TODO: provide some sort of stream
 
-#ifndef LOGGER_NO_INIT
-__attribute__((constructor)) void initLogger();
-#else
-void initLogger();
-#endif
-
 namespace Logger {
     enum Levels {
         ERROR = 5,
@@ -88,6 +87,117 @@ namespace Logger {
         INFO = 1,
         ALL = 0
     };
+    
+    struct Config {
+#ifndef LOGGER_RT_SAFE
+        inline static std::ostream* output = &std::cout;
+#endif
+        inline static int level = Levels::ALL;
+        inline static std::string system_name = "Logger";
+    };
+
+#ifdef LOGGER_RT_SAFE
+    
+    static std::atomic<bool> running{true};
+    static std::thread worker;
+    static std::mutex coutMutex;
+    static std::atomic<size_t> dropped{0}; // counts messages dropped due to full buffer
+
+    template <size_t N>
+    class RingBuffer {
+        std::array<std::string, N> buf{};
+        std::atomic<size_t> head{0}, tail{0};
+
+    public:
+        bool try_enqueue(const std::string& msg) noexcept {
+            size_t next = (head + 1) % N;
+            if (next == tail.load(std::memory_order_acquire)) {
+                dropped.fetch_add(1, std::memory_order_relaxed);
+                return false; // buffer full
+            }
+            buf[head] = msg; // copy string (safe)
+            head.store(next, std::memory_order_release);
+            return true;
+        }
+
+        bool try_dequeue(std::string& msg) noexcept {
+            size_t t = tail.load(std::memory_order_acquire);
+            if (t == head.load(std::memory_order_acquire))
+                return false; // empty
+
+            msg = std::move(buf[t]); // move to reduce copies in logging thread
+            tail.store((t + 1) % N, std::memory_order_release);
+            return true;
+        }
+    };
+
+    static RingBuffer<8192> logQueue; // adjust size as needed
+
+    // Logging thread — prints messages atomically, reports drops
+    static void loggingThread() {
+        std::string msg;
+        while (running.load(std::memory_order_acquire)) {
+            while (logQueue.try_dequeue(msg)) {
+                if (!msg.empty()) {
+                    std::lock_guard<std::mutex> lock(coutMutex);
+                    std::cout.write(msg.c_str(), msg.size());
+                    std::cout.put('\n');
+                    std::cout.flush();
+                }
+            }
+
+            // Report dropped messages
+            size_t local_dropped = dropped.exchange(0, std::memory_order_relaxed);
+            if (local_dropped > 0) {
+                std::lock_guard<std::mutex> lock(coutMutex);
+                std::cout << "[LOGGER WARNING] Dropped " << local_dropped
+                          << " messages due to buffer overflow.\n";
+                std::cout.flush();
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+
+        // Flush any remaining messages before exiting
+        while (logQueue.try_dequeue(msg)) {
+            if (!msg.empty()) {
+                std::lock_guard<std::mutex> lock(coutMutex);
+                std::cout.write(msg.c_str(), msg.size());
+                std::cout.put('\n');
+                std::cout.flush();
+            }
+        }
+
+        // Final dropped messages
+        size_t local_dropped = dropped.load(std::memory_order_relaxed);
+        if (local_dropped > 0) {
+            std::lock_guard<std::mutex> lock(coutMutex);
+            std::cout << "[LOGGER WARNING] Dropped " << local_dropped
+                      << " messages due to buffer overflow.\n";
+            std::cout.flush();
+        }
+    }
+
+    inline void Start() {
+        running.store(true, std::memory_order_release);
+        worker = std::thread(loggingThread);
+        worker.detach();
+    }
+
+    inline void Stop() {
+        running.store(false, std::memory_order_release);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+#endif
+
+    inline void output(const char* msg) {
+#ifdef LOGGER_RT_SAFE
+        logQueue.try_enqueue(msg);
+#else
+        *Config::output << msg << std::endl;
+#endif
+    }
 
     template<typename T>
     inline std::string ContainerToString(const T& container);
@@ -103,8 +213,6 @@ namespace Logger {
 
     inline std::string read(std::string file);
 
-    inline std::string read(std::string file);
-
     EXPORT inline std::vector<int> range(unsigned int start, unsigned int end, int step = 1);
 
     EXPORT inline  std::vector<int> range(unsigned int end);
@@ -115,15 +223,11 @@ namespace Logger {
     inline std::string replace_all(T_t text, T_s search, T_r replace);
 
     template <typename T, typename J>
-    EXPORT inline T join(std::vector<T> list, J join = " ");
+    EXPORT inline std::string join(std::vector<T> list, J join = " ");
 
     inline int parseInt(std::string str);
 
-    struct Config;
-
     inline void exitHandler(int sig);
-
-    inline void initLogger();
 
     inline std::string prettyStacktrace(std::string t, int highlight_frame = -1, std::string highlight_color = FORE_BRIGHT_MAGENTA);
 
@@ -219,10 +323,8 @@ namespace Logger {
     std::string ContainerToString(const T& container) {
         std::string res;
         res += "{ ";
-        for (const auto& elem : container) {
-            res += AsString(elem) + " ";
-        }
-        res+= "}";
+        res += join(container, ", ");
+        res+= " }";
         return res;
     }
 
@@ -232,13 +334,17 @@ namespace Logger {
 
         try {
             if constexpr (std::is_convertible<T, std::string>::value) {
-                res = obj;
+                res = (std::string)obj;
+            } else if constexpr (std::is_convertible<T, char*>::value) {
+                res = std::string((char*)obj);
             } else if constexpr (std::is_same<T, bool>::value) {
                 res = obj ? "true" : "false";
             } else if constexpr (std::is_integral<T>::value || std::is_floating_point<T>::value) {
                 res = std::to_string(obj);
             } else if constexpr (std::is_same<T, const char*>::value) {
                 res = std::string(obj);
+            } else if constexpr (std::is_same<T, const unsigned char*>::value) {
+                res = std::string(reinterpret_cast<const char *>(obj));
             } else if constexpr (std::is_same<T, std::string_view>::value) {
                 res = std::string(obj);
             } else if constexpr (std::is_same<T, std::wstring>::value) {
@@ -264,13 +370,14 @@ namespace Logger {
                 }
             } else {
                 try {
-                    res = std::string(obj);
+                    res = (std::string)(obj);
                 } catch (...) {
                     try {
                         res = static_cast<std::string>(obj);
-                    } catch (...) {
+                    }
+                    catch(...) {
                         try {
-                            const char* cstr = static_cast<const char*>(obj);
+                            const char* cstr = (const char*)(obj);
                             if (cstr != nullptr) {
                                 res = std::string(cstr);
                             } else {
@@ -378,13 +485,13 @@ namespace Logger {
     }
 
     template <typename T, typename J>
-    EXPORT T join(std::vector<T> list, J join) {
-        T res;
+    EXPORT std::string join(std::vector<T> list, J join) {
+        std::string res;
 
         int len = list.size();
         int i = 1;
         for (T x : list) {
-            res += x + (i == len ? "" : (std::string)join);
+            res += AsString(x) + (i == len ? "" : AsString(join));
             i++;
         }
 
@@ -398,13 +505,6 @@ namespace Logger {
         }
         return temp;
     }
-
-
-    struct Config {
-        inline static std::ostream* output = &std::cout;
-        inline static int level = Levels::ALL;
-        inline static std::string system_name = "Logger";
-    };
 
     void exitHandler(int sig) {
         // get exit code name from signal number
@@ -444,18 +544,6 @@ namespace Logger {
         }
 
         exit(sig);
-    }
-
-    void initLogger() {
-    #ifdef LOGGER_VERBOSE
-        Logger::Info("Logger initialized", Logger::Config::system_name);
-    #endif
-
-        // register signal handlers
-
-        for (int x : {SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM}) {
-            signal(x, exitHandler);
-        }
     }
 
     std::string prettyStacktrace(std::string t, int highlight_frame, std::string highlight_color) {
@@ -589,7 +677,7 @@ namespace Logger {
         int indent = (int)(time+name).length();
         end.append(_indenter(AsString(text), indent));
 
-        *Config::output << end << std::endl;
+        output(end.c_str());
     }
 
     template <typename T>
@@ -613,7 +701,7 @@ namespace Logger {
         int indent = (int)(time+name).length();
         end.append(_indenter(AsString(text), indent));
 
-        *Config::output << end << std::endl;
+        output(end.c_str());
     }
 
     template <typename T>
@@ -628,16 +716,18 @@ namespace Logger {
 
         auto time = fancyTime() + " ";
 
+        std::string prefix = "WARNING: ";
+
         end.append(FORE_YELLOW);
         end.append(BOLD);
         end.append(time);
-        end.append(name + "WARNING: ");
+        end.append(name + prefix);
         end.append(RESET);
 
-        int indent = (int)(time+name).length();
+        int indent = (int)(time+name+prefix).length();
         end.append(_indenter(AsString(text), indent));
 
-        *Config::output << end << std::endl;
+        output(end.c_str());
     }
 
     template <typename T>
@@ -652,23 +742,25 @@ namespace Logger {
 
         auto time = fancyTime() + " ";
 
+        std::string prefix = "CRITICAL: ";
+
         end.append(FORE_BRIGHT_MAGENTA);
         end.append(BOLD);
         end.append(time);
-        end.append(name + "CRITICAL: ");
+        end.append(name + prefix);
         end.append(RESET);
 
-        int indent = (int)(time+name).length();
+        int indent = (int)(time+name+prefix).length();
         end.append(_indenter(AsString(text), indent));
 
         end.append("\n");
         end.append(prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_BRIGHT_MAGENTA));
 
-        *Config::output << end << std::endl;
+        output(end.c_str());
     }
 
     template <typename T>
-    void Error(T text, std::string name, int stack_mod) {
+    void Error(T text, std::string name, int stack_mod) { //TODO: make this posix compliant (Only call async-signal-safe functions)
         if (Config::level >= Levels::ERROR) { return; }
 
 
@@ -680,20 +772,27 @@ namespace Logger {
 
         auto time = fancyTime() + " ";
 
+        std::string prefix = "ERROR: ";
+
         end.append(FORE_RED);
         end.append(BOLD);
         end.append(time);
-        end.append(name + "ERROR: ");
+        end.append(name + prefix);
         end.append(RESET);
 
-        int indent = (int)(time+name).length();
+        int indent = (int)(time+name+prefix).length();
         end.append(_indenter(AsString(text), indent));
 
         end.append("\n");
         end.append(prettyStacktrace(to_string(boost::stacktrace::stacktrace()), 1 + stack_mod, FORE_RED));
 
-        *Config::output << end << std::endl;
-        exit(1);
+        char buf[4096];
+        int len = snprintf(buf, sizeof(buf), end.c_str());
+        if (len > 0) {
+            // write directly to stderr (fd=2)
+            write(2, buf, len);
+        }
+        _Exit(1);
     }
 
     template <typename T>
@@ -719,5 +818,43 @@ namespace Logger {
     }
 
 }
+
+#ifndef LOGGER_NO_INIT
+__attribute__((constructor))
+#endif
+inline void initLogger() {
+#ifdef LOGGER_VERBOSE
+    Logger::Info("Starting logging thread", Logger::Config::system_name);
+#endif
+
+#ifdef LOGGER_RT_SAFE
+    Logger::Start();
+#endif
+
+#ifdef LOGGER_VERBOSE
+    Logger::Info("Registering handlers", Logger::Config::system_name);
+#endif
+
+    // register signal handlers
+
+    for (int x : {SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM}) {
+        try {
+            signal(x, Logger::exitHandler);
+        } catch (...) {
+            Logger::Warn("Logger was unable to register signal handler " + std::to_string(x) + ".");
+        }
+    }
+
+
+#ifdef LOGGER_VERBOSE
+    Logger::Info("Logger initalized", Logger::Config::system_name);
+#endif
+}
+
+#ifdef LOGGER_RT_SAFE
+__attribute__((destructor)) inline void destroyLogger() {
+    Logger::Stop();
+}
+#endif
 
 #endif //NEUTRONLOGGER_H
