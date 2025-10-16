@@ -1,4 +1,4 @@
-# NeutronLogger
+c# NeutronLogger
 Part of the [NeutronEngine](https://github.com/AW1534/NeutronEngine) Project.
 
 [Example](https://github.com/AW1534/NeutronEngine/tree/master/NeutronExample/Logging)
@@ -27,7 +27,6 @@ target_link_libraries(NeutronExampleLogging NeutronEngine)
 include_directories(NeutronEngine/Neutron/include)
 ```
 
-
 ## How to use
 ```cpp
 #include <Logger/Logger.h>
@@ -46,3 +45,18 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 ```
+
+---
+<!-- TODO: Move this into a wiki or something-->
+
+BOOST_STACKTRACE_USE_BACKTRACE
+LOGGER_NO_INIT
+LOGGER_RT_SAFE
+LOGGER_VERBOSE
+
+| Preprocessor Definition        | Description                                                                                                                                                                                                                                                                                                                                                           |
+|--------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| BOOST_STACKTRACE_USE_BACKTRACE | Used by `boost_stacktrace` and determines whether the backtrace is generated. Since Neutron Logger depends on the backtrace provided by `boost_stacktrace`, this needs to be set to get any backtrace functionality from the library. Unless being compiled in release mode, Neutron Logger will produce precompile warnings on the event this definition isn't found. |
+| LOGGER_NO_INIT                 | If this is set, signal handlers won't be registered, and, if compiled in Realtime safe mode, the logging thread won't be started.                                                                                                                                                                                                                                     |
+| LOGGER_RT_SAFE                 | If this is set, the logging will realtime safe, meaning a new thread will be created for non realtime-safe logging operations. (DISCLAIMER: not fully RT safe yet)                                                                                                                                                                                                    |
+| LOGGER_VERBOSE                 | If this is set, the logger will log its own events, such as initialization.                                                                                                                                                                                                                                                                                           |
