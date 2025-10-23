@@ -823,9 +823,6 @@ namespace Logger {
 __attribute__((constructor))
 #endif
 inline void initLogger() {
-#ifdef LOGGER_VERBOSE
-    Logger::Info("Starting logging thread", Logger::Config::system_name);
-#endif
 
 #ifdef LOGGER_RT_SAFE
     Logger::Start();
