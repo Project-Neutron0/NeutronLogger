@@ -1,4 +1,4 @@
-c# NeutronLogger
+# NeutronLogger
 Part of the [NeutronEngine](https://github.com/AW1534/NeutronEngine) Project.
 
 [Example](https://github.com/AW1534/NeutronEngine/tree/master/NeutronExample/Logging)
